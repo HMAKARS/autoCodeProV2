@@ -9,6 +9,8 @@ import time
 import signal
 import sys
 
+import pyupbit
+
 from config.settings import CONFIG
 from utils.upbit_client import UpbitClient
 from utils.logger import logger
@@ -92,17 +94,19 @@ class ScalpingBot:
 
     def _process_coin(self, market: str):
         """개별 코인 매매 판단 및 실행."""
+        position = self.risk_manager.get_position(market)
+
         # 캔들 데이터 조회
         df = self.data_collector.get_candles(market)
         if df is None:
+            # 캔들 실패 + 보유 중이면 현재가 기반 손절/시간손절 판단
+            if position:
+                self._fallback_sell(market, position)
             return
 
         # 지표 계산
         indicators = self.data_collector.calc_indicators(df)
         current_price = df["close"].iloc[-1]
-
-        # 보유 여부에 따라 매도/매수 판단
-        position = self.risk_manager.get_position(market)
 
         if position:
             self._evaluate_sell(market, indicators, position, current_price)
@@ -171,6 +175,46 @@ class ScalpingBot:
             reason=signal_result.reason,
         )
 
+        if result:
+            self.risk_manager.remove_position(market, pnl=pnl)
+
+    def _fallback_sell(self, market: str, position):
+        """캔들 데이터 없이 현재가 기반 매도 판단 (손절/시간손절)."""
+        ticker = market.replace("KRW-", "")
+        current_price = pyupbit.get_current_price(market)
+        if not current_price:
+            logger.warning("%s 현재가 조회 실패 - 매도 판단 불가", market)
+            return
+
+        holding_minutes = self.risk_manager.get_holding_minutes(market)
+        pnl_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+
+        reason = ""
+        if pnl_pct <= CONFIG["stop_loss_pct"]:
+            reason = f"손절(캔들없음) {pnl_pct:.2f}%"
+        elif holding_minutes >= CONFIG["time_stop_minutes"]:
+            reason = f"시간손절(캔들없음) {holding_minutes:.0f}분"
+
+        if not reason:
+            logger.debug(
+                "%s 캔들없음 보유유지 | PnL=%.2f%% | %.0f분 경과",
+                market, pnl_pct, holding_minutes,
+            )
+            return
+
+        pnl = (current_price - position.entry_price) * position.volume
+        logger.info(
+            "%s %s | price=%.2f PnL=%.2f%%",
+            market, reason, current_price, pnl_pct,
+        )
+
+        result = self.order_executor.sell(
+            market=market,
+            volume=position.volume,
+            entry_price=position.entry_price,
+            current_price=current_price,
+            reason=reason,
+        )
         if result:
             self.risk_manager.remove_position(market, pnl=pnl)
 
