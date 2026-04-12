@@ -2,8 +2,8 @@
 
 1차: 상승률 상위 10개
 2차: 호가 분석 (매수세 우위 + 스프레드 제한)
-3차: 거래대금 × 현재가 최종 1개 선정
-4차: 기술적 지표 검증 (RSI, MACD, 볼린저밴드)
+3차: 거래대금 상위 5개
+4차: 기술적 지표 점수로 최종 순위 결정
 """
 
 import logging
@@ -85,11 +85,11 @@ def select_coin(tickers: list[dict], active_markets: set[str]) -> str | None:
         total_bid = float(ob.get("total_bid_size", 0))
         total_ask = float(ob.get("total_ask_size", 0))
 
-        # 매수세 우위: bid > ask × 1.5
-        if total_ask <= 0 or total_bid <= total_ask * 1.5:
+        # 매수세 우위: bid > ask × 1.2
+        if total_ask <= 0 or total_bid <= total_ask * 1.2:
             continue
 
-        # 스프레드 < 0.1%
+        # 스프레드 < 0.15%
         units = ob.get("orderbook_units", [])
         if not units:
             continue
@@ -98,7 +98,7 @@ def select_coin(tickers: list[dict], active_markets: set[str]) -> str | None:
         if bid_price <= 0:
             continue
         spread = ((ask_price - bid_price) / bid_price) * 100
-        if spread >= 0.1:
+        if spread >= 0.15:
             continue
 
         passed.append(t)
@@ -112,37 +112,43 @@ def select_coin(tickers: list[dict], active_markets: set[str]) -> str | None:
     )
     top5 = passed[:5]
 
-    # 거래대금 × 현재가 기준 정렬
-    top5.sort(
-        key=lambda t: float(t.get("trade_price", 0)) * float(t.get("acc_trade_price_24h", 0)),
-        reverse=True,
-    )
+    # 4차: 기술적 지표 점수로 최종 순위 결정
+    scored = []
+    for t in top5:
+        market = t["market"]
+        base_score = float(t.get("trade_price", 0)) * float(t.get("acc_trade_price_24h", 0))
+        indicator_score, blocked = _score_indicators(market)
 
-    # 4차: 기술적 지표 검증 (상위 후보부터 순서대로 확인)
-    for candidate in top5:
-        market = candidate["market"]
-        if _check_indicators(market):
-            logger.info("종목 선정: %s (지표 통과)", market)
-            return market
+        if blocked:
+            logger.info("%s 매수 제외: 극단적 과매수", market)
+            continue
 
-    # 지표 통과 종목이 없으면 최상위 후보 선정 (기존 로직 유지)
-    best = top5[0]
-    logger.info("종목 선정: %s (지표 미통과, 거래대금 기준)", best["market"])
+        scored.append((t, base_score, indicator_score))
+
+    if not scored:
+        # 지표로 전부 차단된 경우, 거래대금 기준 최상위 선정 (매매 기회 보존)
+        best = top5[0]
+        logger.info("종목 선정: %s (지표 전부 차단, 거래대금 기준)", best["market"])
+        return best["market"]
+
+    # 지표 점수 반영하여 최종 선정
+    scored.sort(key=lambda x: x[2], reverse=True)
+    best = scored[0][0]
+    logger.info("종목 선정: %s (지표점수=%.1f)", best["market"], scored[0][2])
     return best["market"]
 
 
-def _check_indicators(market: str) -> bool:
-    """기술적 지표로 매수 적합성 검증.
+def _score_indicators(market: str) -> tuple[float, bool]:
+    """기술적 지표 점수 계산.
 
-    - RSI < 70: 과매수 구간이 아닌지 확인
-    - MACD histogram > 0: 상승 모멘텀 확인
-    - 현재가가 볼린저밴드 상단 미만: 과열 구간이 아닌지 확인
+    Returns:
+        (점수, 차단 여부) - 점수가 높을수록 매수 적합
+        차단은 RSI > 80 + BB 상단 돌파인 극단적 과매수만 해당
     """
     candles = upbit_client.get_candles_minutes(market, unit=3, count=50)
     if not candles or len(candles) < 26:
-        return True  # 데이터 부족 시 통과 (기존 로직대로)
+        return 0.0, False  # 데이터 부족 시 중립 점수
 
-    # 캔들 데이터를 DataFrame 변환 (오래된 순으로 정렬)
     df = pd.DataFrame(candles[::-1])
     df = df.rename(columns={
         "opening_price": "open",
@@ -158,19 +164,45 @@ def _check_indicators(market: str) -> bool:
         bb = calculate_bollinger_bands(df)
         current_price = float(df["close"].iloc[-1])
 
-        # 과매수 구간(RSI > 70)이면서 볼린저 상단 돌파 → 매수 부적합
-        if rsi > 70 and current_price > bb["upper"]:
-            logger.info("%s 매수 제외: RSI=%.1f, 볼린저 상단 돌파", market, rsi)
-            return False
+        score = 0.0
 
-        # MACD 하락 모멘텀(histogram < 0)이면서 RSI도 높음 → 매수 부적합
-        if macd["histogram"] < 0 and rsi > 65:
-            logger.info(
-                "%s 매수 제외: MACD histogram=%.4f, RSI=%.1f", market, macd["histogram"], rsi
-            )
-            return False
+        # RSI 점수: 30~50이 가장 좋은 진입 구간
+        if rsi < 30:
+            score += 2  # 과매도 = 반등 기대
+        elif rsi < 50:
+            score += 3  # 최적 진입 구간
+        elif rsi < 65:
+            score += 1  # 양호
+        elif rsi < 80:
+            score -= 1  # 주의
+        else:
+            score -= 3  # 과매수
 
-        return True
+        # MACD 점수
+        if macd["histogram"] > 0:
+            score += 2  # 상승 모멘텀
+        else:
+            score -= 1  # 하락 모멘텀
+
+        # 볼린저밴드 위치 점수
+        if current_price < bb["lower"]:
+            score += 2  # 하단 이탈 = 반등 기대
+        elif current_price < bb["middle"]:
+            score += 1  # 중간 이하 = 상승 여력
+        elif current_price > bb["upper"]:
+            score -= 2  # 상단 돌파 = 과열
+
+        # 극단적 과매수만 차단: RSI 80 이상 + 볼린저 상단 돌파
+        blocked = rsi > 80 and current_price > bb["upper"]
+
+        logger.info(
+            "%s 지표: RSI=%.1f MACD_H=%.4f BB위치=%s → 점수=%.1f",
+            market, rsi, macd["histogram"],
+            "상단↑" if current_price > bb["upper"] else
+            "중간↑" if current_price > bb["middle"] else "하단↓",
+            score,
+        )
+        return score, blocked
     except Exception as e:
         logger.warning("%s 지표 계산 실패: %s", market, e)
-        return True  # 계산 실패 시 통과
+        return 0.0, False

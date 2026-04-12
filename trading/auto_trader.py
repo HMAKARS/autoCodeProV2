@@ -288,24 +288,20 @@ class AutoTrader:
         if current >= buy * 1.01 and market_state in ("neutral", "bearish"):
             return f"수익실현 1% ({market_state})"
 
-        # ── 기술적 지표 기반 매도 ──
-        if indicators and pnl_pct > 0.5:
+        # ── 기술적 지표 기반 매도 (수익 0.8% 이상일 때만) ──
+        if indicators and pnl_pct > 0.8:
             rsi = indicators["rsi"]
             macd_hist = indicators["macd"]["histogram"]
             bb_upper = indicators["bb"]["upper"]
             stoch_k = indicators["stoch"]["k"]
 
-            # RSI 과매수 + 볼린저 상단 돌파 → 고점 매도
-            if rsi > 75 and current > bb_upper:
+            # RSI 극과매수 + 볼린저 상단 돌파 → 고점 매도
+            if rsi > 78 and current > bb_upper:
                 return f"지표매도: RSI 과매수({rsi:.0f}) + BB상단 돌파"
 
-            # RSI 과매수 + MACD 하락 전환 → 모멘텀 약화
-            if rsi > 70 and macd_hist < 0:
-                return f"지표매도: RSI({rsi:.0f}) + MACD 하락전환"
-
-            # 스토캐스틱 과매수 + MACD 하락 → 단기 고점
-            if stoch_k > 80 and macd_hist < 0:
-                return f"지표매도: 스토캐스틱({stoch_k:.0f}) + MACD 하락전환"
+            # RSI 과매수 + MACD 하락 + 스토캐스틱 고점 → 복합 하락 신호
+            if rsi > 75 and macd_hist < 0 and stoch_k > 80:
+                return f"지표매도: RSI({rsi:.0f}) + MACD↓ + 스토캐스틱({stoch_k:.0f})"
 
         # 시간 기반 매도
         if market_state == "bullish" and elapsed >= 360:
