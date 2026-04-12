@@ -1,6 +1,6 @@
 """매수 종목 선정 모듈.
 
-1차: 상승률 상위 10개
+1차: 최소 거래대금 + 상승 종목 필터
 2차: 호가 분석 (매수세 우위 + 스프레드 제한)
 3차: 거래대금 상위 5개
 4차: 기술적 지표 점수로 최종 순위 결정
@@ -8,14 +8,19 @@
 
 import logging
 import time
+from datetime import timedelta
 
 import pandas as pd
+from django.utils import timezone
 
 from . import upbit_client
 from .indicators import calculate_rsi, calculate_macd, calculate_bollinger_bands
 from .models import FailedMarket, AskRecord
 
 logger = logging.getLogger(__name__)
+
+# 24시간 최소 거래대금 (50억원) - 이 이하는 단타 부적합
+MIN_TRADE_VALUE_24H = 5_000_000_000
 
 # 호가 캐시 (5초)
 _orderbook_cache: dict = {}
@@ -53,8 +58,6 @@ def select_coin(tickers: list[dict], active_markets: set[str]) -> str | None:
     failed_cooldown = timezone.now() - timedelta(minutes=5)
     FailedMarket.objects.filter(failed_at__lte=failed_cooldown).delete()
     failed = set(FailedMarket.objects.values_list("market", flat=True))
-    from django.utils import timezone
-    from datetime import timedelta
     cooldown = timezone.now() - timedelta(minutes=10)
     recent_sold = set(
         AskRecord.objects.filter(recorded_at__gte=cooldown)
@@ -62,11 +65,12 @@ def select_coin(tickers: list[dict], active_markets: set[str]) -> str | None:
     )
     excluded = failed | recent_sold | active_markets
 
-    # 1차: 상승 종목 상위 10개
+    # 1차: 최소 거래대금 + 상승 종목 상위 10개
     rising = [
         t for t in tickers
         if t["market"] not in excluded
         and float(t.get("signed_change_rate", 0)) > 0
+        and float(t.get("acc_trade_price_24h", 0)) >= MIN_TRADE_VALUE_24H
     ]
     rising.sort(key=lambda t: float(t.get("signed_change_rate", 0)), reverse=True)
     top10 = rising[:10]
