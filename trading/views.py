@@ -75,6 +75,10 @@ def fetch_account_data(request):
                 "pnl_pct": 0,
             })
 
+    # 유효 마켓만 필터 (상장폐지 코인 제외)
+    valid_markets = set(upbit_client.get_krw_markets())
+    coin_markets = [m for m in coin_markets if m in valid_markets]
+
     # 현재가 일괄 조회
     if coin_markets:
         tickers = upbit_client.get_ticker(coin_markets)
