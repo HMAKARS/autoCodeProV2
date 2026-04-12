@@ -3,96 +3,280 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>업비트 자동매매</title>
     <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-card: #161b22;
+            --bg-input: #21262d;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-dim: #8b949e;
+            --accent: #e94560;
+            --accent-hover: #d63851;
+            --green: #3fb950;
+            --red: #f85149;
+            --blue: #58a6ff;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
-        h1 { text-align: center; margin-bottom: 20px; color: #e94560; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        .panel { background: #16213e; border-radius: 8px; padding: 16px; }
-        .panel h2 { font-size: 14px; color: #e94560; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 6px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Header ── */
+        .header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: -0.5px;
+        }
+
+        /* ── Controls ── */
+        .controls {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .controls label { font-size: 13px; color: var(--text-dim); }
+        .controls input[type="number"] {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            width: 120px;
+            font-size: 14px;
+            text-align: right;
+        }
+        .controls .unit { font-size: 13px; color: var(--text-dim); }
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-start { background: var(--accent); color: #fff; }
+        .btn-start:hover { background: var(--accent-hover); }
+        .btn-stop { background: var(--bg-input); color: var(--text-dim); border: 1px solid var(--border); }
+        .btn-stop:hover { background: #30363d; }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-badge.on { background: rgba(63,185,80,0.15); color: var(--green); }
+        .status-badge.off { background: rgba(139,148,158,0.15); color: var(--text-dim); }
+
+        /* ── Market State ── */
+        .market-bar {
+            text-align: center;
+            padding: 10px;
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+        .market-badge {
+            display: inline-block;
+            padding: 3px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .market-badge.bullish { background: rgba(248,81,73,0.15); color: var(--red); }
+        .market-badge.bearish { background: rgba(88,166,255,0.15); color: var(--blue); }
+        .market-badge.neutral { background: rgba(139,148,158,0.15); color: var(--text-dim); }
+
+        /* ── Main Content ── */
+        .content { padding: 12px; max-width: 1400px; margin: 0 auto; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+
+        /* ── Card ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .card-header .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: inline-block;
+        }
+        .card-body { padding: 0; }
+
+        /* ── Table ── */
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { background: #0f3460; padding: 6px 8px; text-align: left; }
-        td { padding: 6px 8px; border-bottom: 1px solid #222; }
-        .profit { color: #ff4757; }
-        .loss { color: #3742fa; }
-        .controls { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; justify-content: center; }
-        input[type="number"] { background: #0f3460; border: 1px solid #444; color: #eee; padding: 8px 12px; border-radius: 4px; width: 160px; }
-        button { padding: 8px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-start { background: #e94560; color: #fff; }
-        .btn-stop { background: #555; color: #fff; }
-        .btn-start:hover { background: #c0392b; }
-        .btn-stop:hover { background: #777; }
-        .status { padding: 4px 12px; border-radius: 12px; font-size: 12px; }
-        .status.on { background: #27ae60; }
-        .status.off { background: #555; }
-        .market-state { text-align: center; margin-bottom: 12px; font-size: 14px; }
-        .market-state .badge { padding: 4px 16px; border-radius: 12px; font-weight: bold; }
-        .badge.bullish { background: #e94560; }
-        .badge.bearish { background: #3742fa; }
-        .badge.neutral { background: #555; }
-        #logPanel { height: 500px; overflow-y: auto; background: #0d1117; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 12px; line-height: 1.6; }
+        th {
+            background: rgba(22,27,34,0.8);
+            padding: 8px 10px;
+            text-align: right;
+            font-weight: 600;
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        th:first-child { text-align: left; }
+        td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(48,54,61,0.5);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        td:first-child { text-align: left; font-weight: 500; }
+        tr:last-child td { border-bottom: none; }
+        .profit { color: var(--red); }
+        .loss { color: var(--blue); }
+
+        /* ── Log Panel ── */
+        .log-panel {
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px 14px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.8;
+            color: var(--text-dim);
+        }
+        .log-panel div { border-bottom: 1px solid rgba(48,54,61,0.3); padding: 2px 0; }
         .full-width { grid-column: 1 / -1; }
+
+        /* ── Mobile ── */
+        @media (max-width: 768px) {
+            .header h1 { font-size: 16px; }
+            .grid { grid-template-columns: 1fr; gap: 10px; }
+            .controls { padding: 10px 12px; gap: 6px; }
+            .controls input[type="number"] { width: 100px; padding: 6px 8px; font-size: 13px; }
+            .btn { padding: 7px 14px; font-size: 12px; }
+            .content { padding: 8px; }
+            table { font-size: 12px; }
+            th, td { padding: 6px 8px; }
+            .card-header { padding: 8px 12px; font-size: 12px; }
+            .log-panel { height: 300px; font-size: 11px; padding: 8px 10px; }
+
+            /* 코인 테이블 스크롤 */
+            .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        }
+
+        /* ── Desktop wide ── */
+        @media (min-width: 1200px) {
+            .grid-4 { grid-template-columns: repeat(4, 1fr); }
+        }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     </style>
 </head>
 <body>
-    <h1>업비트 자동매매 시스템</h1>
+    <div class="header">
+        <h1>UPBIT AUTO TRADER</h1>
+    </div>
 
     <div class="controls">
-        <label>매수 금액:</label>
+        <label>매수금액</label>
         <input type="number" id="budgetInput" value="50000" step="10000" min="5000">
-        <span>원</span>
-        <button class="btn-start" onclick="startTrade()">시작</button>
-        <button class="btn-stop" onclick="stopTrade()">정지</button>
-        <span id="tradeStatus" class="status off">중지됨</span>
+        <span class="unit">원</span>
+        <button class="btn btn-start" onclick="startTrade()">시작</button>
+        <button class="btn btn-stop" onclick="stopTrade()">정지</button>
+        <span id="tradeStatus" class="status-badge off">중지됨</span>
     </div>
 
-    <div class="market-state">
-        시장 상태: <span id="marketBadge" class="badge neutral">조회 중...</span>
+    <div class="market-bar">
+        시장 상태 <span id="marketBadge" class="market-badge neutral">조회 중</span>
     </div>
 
-    <div class="grid">
-        <!-- 자산 정보 -->
-        <div class="panel">
-            <h2>보유 자산</h2>
-            <table>
-                <thead><tr><th>화폐</th><th>수량</th><th>평균매수가</th><th>평가금액</th><th>수익률</th></tr></thead>
-                <tbody id="accountBody"></tbody>
-            </table>
-        </div>
+    <div class="content">
+        <!-- 상단 요약 카드 (데스크톱 4열, 모바일 1열) -->
+        <div class="grid" id="summaryGrid">
+            <!-- 보유 자산 -->
+            <div class="card">
+                <div class="card-header"><span class="dot"></span>보유 자산</div>
+                <div class="card-body table-scroll">
+                    <table>
+                        <thead><tr><th>화폐</th><th>수량</th><th>매수가</th><th>평가액</th><th>수익률</th></tr></thead>
+                        <tbody id="accountBody"><tr><td colspan="5" style="text-align:center;color:var(--text-dim)">로딩 중...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
 
-        <!-- 거래유망코인 -->
-        <div class="panel">
-            <h2>거래유망코인 (거래대금 순)</h2>
-            <table>
-                <thead><tr><th>코인</th><th>현재가</th><th>변동률</th><th>거래대금</th></tr></thead>
-                <tbody id="coinBody"></tbody>
-            </table>
-        </div>
+            <!-- 거래유망코인 -->
+            <div class="card">
+                <div class="card-header"><span class="dot"></span>거래유망코인</div>
+                <div class="card-body table-scroll">
+                    <table>
+                        <thead><tr><th>코인</th><th>현재가</th><th>변동률</th><th>거래대금</th></tr></thead>
+                        <tbody id="coinBody"><tr><td colspan="4" style="text-align:center;color:var(--text-dim)">로딩 중...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
 
-        <!-- 최근 매도 체결 -->
-        <div class="panel">
-            <h2>최근 매도 체결</h2>
-            <table>
-                <thead><tr><th>코인</th><th>매수가</th><th>수익률</th><th>일시</th></tr></thead>
-                <tbody id="recentBody"></tbody>
-            </table>
-        </div>
+            <!-- 최근 매도 -->
+            <div class="card">
+                <div class="card-header"><span class="dot"></span>최근 매도</div>
+                <div class="card-body table-scroll">
+                    <table>
+                        <thead><tr><th>코인</th><th>매수가</th><th>수익률</th><th>일시</th></tr></thead>
+                        <tbody id="recentBody"><tr><td colspan="4" style="text-align:center;color:var(--text-dim)">내역 없음</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
 
-        <!-- 수익 로그 -->
-        <div class="panel">
-            <h2>수익 로그</h2>
-            <table>
-                <thead><tr><th>코인</th><th>매수가</th><th>매도가</th><th>수익률</th><th>금액</th></tr></thead>
-                <tbody id="profitBody"></tbody>
-            </table>
+            <!-- 수익 로그 -->
+            <div class="card">
+                <div class="card-header"><span class="dot"></span>수익 로그</div>
+                <div class="card-body table-scroll">
+                    <table>
+                        <thead><tr><th>코인</th><th>매수가</th><th>매도가</th><th>수익률</th></tr></thead>
+                        <tbody id="profitBody"><tr><td colspan="4" style="text-align:center;color:var(--text-dim)">내역 없음</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- 거래 로그 -->
-        <div class="panel full-width">
-            <h2>거래 로그</h2>
-            <div id="logPanel"></div>
+        <div class="card">
+            <div class="card-header"><span class="dot"></span>거래 로그</div>
+            <div class="card-body">
+                <div class="log-panel" id="logPanel">
+                    <div style="color:var(--text-dim)">로그 대기 중...</div>
+                </div>
+            </div>
         </div>
     </div>
 
