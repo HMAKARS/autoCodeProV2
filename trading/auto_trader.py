@@ -335,6 +335,8 @@ class AutoTrader:
                 break
 
         buy_amount = min(self._budget, krw)
+        # 수수료(0.05%) 반영 후 1원 단위 내림
+        buy_amount = int(buy_amount / (1 + FEE_RATE))
         if buy_amount < MIN_KRW_BALANCE:
             return
 
@@ -354,8 +356,8 @@ class AutoTrader:
         if not selected:
             return
 
-        # 잔고 초과 방지
-        buy_amount = min(buy_amount, krw)
+        # 잔고 초과 방지 (수수료 포함 금액이 잔고를 넘지 않도록)
+        buy_amount = min(buy_amount, int(krw / (1 + FEE_RATE)))
 
         self._log(f"매수 시도: {selected} | 금액={buy_amount:,.0f}원")
 
