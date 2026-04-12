@@ -126,6 +126,27 @@ def get_candles_seconds(market: str, count: int = 60) -> list[dict]:
         return []
 
 
+def get_candles_minutes(market: str, unit: int = 3, count: int = 50) -> list[dict]:
+    """분봉 캔들 데이터 조회.
+
+    Args:
+        market: 마켓 코드 (예: KRW-BTC)
+        unit: 분 단위 (1, 3, 5, 10, 15, 30, 60, 240)
+        count: 캔들 개수 (최대 200)
+    """
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/v1/candles/minutes/{unit}",
+            params={"market": market, "count": count},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        logger.error("%s %d분봉 조회 실패: %s", market, unit, e)
+        return []
+
+
 # ── 주문 ────────────────────────────────────────────────
 
 def buy_market_order(market: str, price: float) -> dict | None:

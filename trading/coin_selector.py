@@ -3,12 +3,16 @@
 1차: 상승률 상위 10개
 2차: 호가 분석 (매수세 우위 + 스프레드 제한)
 3차: 거래대금 × 현재가 최종 1개 선정
+4차: 기술적 지표 검증 (RSI, MACD, 볼린저밴드)
 """
 
 import logging
 import time
 
+import pandas as pd
+
 from . import upbit_client
+from .indicators import calculate_rsi, calculate_macd, calculate_bollinger_bands
 from .models import FailedMarket, AskRecord
 
 logger = logging.getLogger(__name__)
@@ -108,9 +112,65 @@ def select_coin(tickers: list[dict], active_markets: set[str]) -> str | None:
     )
     top5 = passed[:5]
 
-    best = max(
-        top5,
+    # 거래대금 × 현재가 기준 정렬
+    top5.sort(
         key=lambda t: float(t.get("trade_price", 0)) * float(t.get("acc_trade_price_24h", 0)),
+        reverse=True,
     )
-    logger.info("종목 선정: %s", best["market"])
+
+    # 4차: 기술적 지표 검증 (상위 후보부터 순서대로 확인)
+    for candidate in top5:
+        market = candidate["market"]
+        if _check_indicators(market):
+            logger.info("종목 선정: %s (지표 통과)", market)
+            return market
+
+    # 지표 통과 종목이 없으면 최상위 후보 선정 (기존 로직 유지)
+    best = top5[0]
+    logger.info("종목 선정: %s (지표 미통과, 거래대금 기준)", best["market"])
     return best["market"]
+
+
+def _check_indicators(market: str) -> bool:
+    """기술적 지표로 매수 적합성 검증.
+
+    - RSI < 70: 과매수 구간이 아닌지 확인
+    - MACD histogram > 0: 상승 모멘텀 확인
+    - 현재가가 볼린저밴드 상단 미만: 과열 구간이 아닌지 확인
+    """
+    candles = upbit_client.get_candles_minutes(market, unit=3, count=50)
+    if not candles or len(candles) < 26:
+        return True  # 데이터 부족 시 통과 (기존 로직대로)
+
+    # 캔들 데이터를 DataFrame 변환 (오래된 순으로 정렬)
+    df = pd.DataFrame(candles[::-1])
+    df = df.rename(columns={
+        "opening_price": "open",
+        "high_price": "high",
+        "low_price": "low",
+        "trade_price": "close",
+        "candle_acc_trade_volume": "volume",
+    })
+
+    try:
+        rsi = calculate_rsi(df)
+        macd = calculate_macd(df)
+        bb = calculate_bollinger_bands(df)
+        current_price = float(df["close"].iloc[-1])
+
+        # 과매수 구간(RSI > 70)이면서 볼린저 상단 돌파 → 매수 부적합
+        if rsi > 70 and current_price > bb["upper"]:
+            logger.info("%s 매수 제외: RSI=%.1f, 볼린저 상단 돌파", market, rsi)
+            return False
+
+        # MACD 하락 모멘텀(histogram < 0)이면서 RSI도 높음 → 매수 부적합
+        if macd["histogram"] < 0 and rsi > 65:
+            logger.info(
+                "%s 매수 제외: MACD histogram=%.4f, RSI=%.1f", market, macd["histogram"], rsi
+            )
+            return False
+
+        return True
+    except Exception as e:
+        logger.warning("%s 지표 계산 실패: %s", market, e)
+        return True  # 계산 실패 시 통과

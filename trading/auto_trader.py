@@ -16,7 +16,9 @@ from . import upbit_client
 from .models import TradeRecord, FailedMarket, AskRecord
 from .market_analyzer import get_market_state
 from .coin_selector import select_coin
-from .indicators import calculate_rsi, calculate_macd
+from .indicators import (
+    calculate_rsi, calculate_macd, calculate_bollinger_bands, calculate_stochastic,
+)
 from .telegram_bot import send_message as tg_notify
 
 logger = logging.getLogger(__name__)
@@ -184,9 +186,12 @@ class AutoTrader:
         created = trade["created_at"]
         elapsed = (timezone.now() - created).total_seconds()
 
+        # 기술적 지표 조회
+        indicators = self._get_indicators(market)
+
         sell_reason = self._check_sell_conditions(
             current_price, buy_price, highest, pnl_pct,
-            market_state, elapsed, change_rate,
+            market_state, elapsed, change_rate, indicators,
         )
 
         if not sell_reason:
@@ -228,6 +233,32 @@ class AutoTrader:
         else:
             self._log(f"매도 실패: {market}")
 
+    def _get_indicators(self, market: str) -> dict | None:
+        """기술적 지표 계산. 캔들 데이터 조회 후 RSI/MACD/BB/스토캐스틱 반환."""
+        candles = upbit_client.get_candles_minutes(market, unit=3, count=50)
+        if not candles or len(candles) < 26:
+            return None
+
+        df = pd.DataFrame(candles[::-1])
+        df = df.rename(columns={
+            "opening_price": "open",
+            "high_price": "high",
+            "low_price": "low",
+            "trade_price": "close",
+            "candle_acc_trade_volume": "volume",
+        })
+
+        try:
+            return {
+                "rsi": calculate_rsi(df),
+                "macd": calculate_macd(df),
+                "bb": calculate_bollinger_bands(df),
+                "stoch": calculate_stochastic(df),
+            }
+        except Exception as e:
+            logger.warning("%s 지표 계산 실패: %s", market, e)
+            return None
+
     def _check_sell_conditions(
         self,
         current: float,
@@ -237,6 +268,7 @@ class AutoTrader:
         market_state: str,
         elapsed: float,
         change_rate: float,
+        indicators: dict | None = None,
     ) -> str | None:
         """매도 조건 확인. 반환: 매도 사유 문자열 또는 None."""
         # 손절: 고변동성 -4%, 일반 -2%
@@ -255,6 +287,25 @@ class AutoTrader:
         # 수익 실현: 1% 이상 + 보합/하락장
         if current >= buy * 1.01 and market_state in ("neutral", "bearish"):
             return f"수익실현 1% ({market_state})"
+
+        # ── 기술적 지표 기반 매도 ──
+        if indicators and pnl_pct > 0.5:
+            rsi = indicators["rsi"]
+            macd_hist = indicators["macd"]["histogram"]
+            bb_upper = indicators["bb"]["upper"]
+            stoch_k = indicators["stoch"]["k"]
+
+            # RSI 과매수 + 볼린저 상단 돌파 → 고점 매도
+            if rsi > 75 and current > bb_upper:
+                return f"지표매도: RSI 과매수({rsi:.0f}) + BB상단 돌파"
+
+            # RSI 과매수 + MACD 하락 전환 → 모멘텀 약화
+            if rsi > 70 and macd_hist < 0:
+                return f"지표매도: RSI({rsi:.0f}) + MACD 하락전환"
+
+            # 스토캐스틱 과매수 + MACD 하락 → 단기 고점
+            if stoch_k > 80 and macd_hist < 0:
+                return f"지표매도: 스토캐스틱({stoch_k:.0f}) + MACD 하락전환"
 
         # 시간 기반 매도
         if market_state == "bullish" and elapsed >= 360:
