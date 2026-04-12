@@ -49,6 +49,9 @@ def select_coin(tickers: list[dict], active_markets: set[str]) -> str | None:
         최종 선정된 마켓 코드 또는 None
     """
     # 제외 목록 구성
+    # 5분 지난 FailedMarket 자동 해제
+    failed_cooldown = timezone.now() - timedelta(minutes=5)
+    FailedMarket.objects.filter(failed_at__lte=failed_cooldown).delete()
     failed = set(FailedMarket.objects.values_list("market", flat=True))
     from django.utils import timezone
     from datetime import timedelta
