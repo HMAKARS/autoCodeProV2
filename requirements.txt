@@ -1,5 +1,6 @@
-pyupbit>=0.2.33
-pandas>=1.5.0
-ta>=0.10.2
-schedule>=1.2.0
-python-dotenv>=1.0.0
+Django>=5.1,<5.2
+djangorestframework>=3.15.0
+django-environ>=0.11.2
+PyJWT>=2.8.0
+pandas>=2.0.0
+requests>=2.31.0

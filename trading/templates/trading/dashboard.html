@@ -1,0 +1,101 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>업비트 자동매매</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+        h1 { text-align: center; margin-bottom: 20px; color: #e94560; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .panel { background: #16213e; border-radius: 8px; padding: 16px; }
+        .panel h2 { font-size: 14px; color: #e94560; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 6px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #0f3460; padding: 6px 8px; text-align: left; }
+        td { padding: 6px 8px; border-bottom: 1px solid #222; }
+        .profit { color: #ff4757; }
+        .loss { color: #3742fa; }
+        .controls { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; justify-content: center; }
+        input[type="number"] { background: #0f3460; border: 1px solid #444; color: #eee; padding: 8px 12px; border-radius: 4px; width: 160px; }
+        button { padding: 8px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-start { background: #e94560; color: #fff; }
+        .btn-stop { background: #555; color: #fff; }
+        .btn-start:hover { background: #c0392b; }
+        .btn-stop:hover { background: #777; }
+        .status { padding: 4px 12px; border-radius: 12px; font-size: 12px; }
+        .status.on { background: #27ae60; }
+        .status.off { background: #555; }
+        .market-state { text-align: center; margin-bottom: 12px; font-size: 14px; }
+        .market-state .badge { padding: 4px 16px; border-radius: 12px; font-weight: bold; }
+        .badge.bullish { background: #e94560; }
+        .badge.bearish { background: #3742fa; }
+        .badge.neutral { background: #555; }
+        #logPanel { height: 500px; overflow-y: auto; background: #0d1117; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 12px; line-height: 1.6; }
+        .full-width { grid-column: 1 / -1; }
+    </style>
+</head>
+<body>
+    <h1>업비트 자동매매 시스템</h1>
+
+    <div class="controls">
+        <label>매수 금액:</label>
+        <input type="number" id="budgetInput" value="50000" step="10000" min="5000">
+        <span>원</span>
+        <button class="btn-start" onclick="startTrade()">시작</button>
+        <button class="btn-stop" onclick="stopTrade()">정지</button>
+        <span id="tradeStatus" class="status off">중지됨</span>
+    </div>
+
+    <div class="market-state">
+        시장 상태: <span id="marketBadge" class="badge neutral">조회 중...</span>
+    </div>
+
+    <div class="grid">
+        <!-- 자산 정보 -->
+        <div class="panel">
+            <h2>보유 자산</h2>
+            <table>
+                <thead><tr><th>화폐</th><th>수량</th><th>평균매수가</th><th>평가금액</th><th>수익률</th></tr></thead>
+                <tbody id="accountBody"></tbody>
+            </table>
+        </div>
+
+        <!-- 거래유망코인 -->
+        <div class="panel">
+            <h2>거래유망코인 (거래대금 순)</h2>
+            <table>
+                <thead><tr><th>코인</th><th>현재가</th><th>변동률</th><th>거래대금</th></tr></thead>
+                <tbody id="coinBody"></tbody>
+            </table>
+        </div>
+
+        <!-- 최근 매도 체결 -->
+        <div class="panel">
+            <h2>최근 매도 체결</h2>
+            <table>
+                <thead><tr><th>코인</th><th>매수가</th><th>수익률</th><th>일시</th></tr></thead>
+                <tbody id="recentBody"></tbody>
+            </table>
+        </div>
+
+        <!-- 수익 로그 -->
+        <div class="panel">
+            <h2>수익 로그</h2>
+            <table>
+                <thead><tr><th>코인</th><th>매수가</th><th>매도가</th><th>수익률</th><th>금액</th></tr></thead>
+                <tbody id="profitBody"></tbody>
+            </table>
+        </div>
+
+        <!-- 거래 로그 -->
+        <div class="panel full-width">
+            <h2>거래 로그</h2>
+            <div id="logPanel"></div>
+        </div>
+    </div>
+
+    <script src="{% static 'trading/js/dashboard.js' %}"></script>
+</body>
+</html>
