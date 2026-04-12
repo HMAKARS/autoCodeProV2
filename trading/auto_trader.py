@@ -204,7 +204,7 @@ class AutoTrader:
 
         self._log(
             f"매도 시도: {market} | 사유={sell_reason} | "
-            f"매수가={buy_price:,.2f} 현재가={current_price:,.2f} "
+            f"매수가={buy_price:,g} 현재가={current_price:,g} "
             f"수익률={real_pnl:.2f}%"
         )
 
@@ -225,8 +225,8 @@ class AutoTrader:
             emoji = "💰" if real_pnl >= 0 else "📉"
             tg_notify(
                 f"{emoji} 매도 체결: {market}\n"
-                f"매수가: {buy_price:,.2f}원\n"
-                f"매도가: {current_price:,.2f}원\n"
+                f"매수가: {buy_price:,g}원\n"
+                f"매도가: {current_price:,g}원\n"
                 f"수익률: {real_pnl:+.2f}%\n"
                 f"사유: {sell_reason}"
             )
@@ -282,7 +282,7 @@ class AutoTrader:
         # 트레일링 스탑: 2% 이상 수익 후 최고가 대비 1% 하락
         if current >= buy * 1.02 and highest > 0:
             if current <= highest * 0.99:
-                return f"트레일링스탑 (최고가={highest:,.2f} 현재={current:,.2f})"
+                return f"트레일링스탑 (최고가={highest:,g} 현재={current:,g})"
 
         # 수익 실현: 1% 이상 + 보합/하락장
         if current >= buy * 1.01 and market_state in ("neutral", "bearish"):
@@ -386,10 +386,10 @@ class AutoTrader:
                 "created_at": rec.created_at,
                 "buy_krw_price": buy_amount,
             }
-            self._log(f"매수 체결: {selected} @ {price:,.2f}원")
+            self._log(f"매수 체결: {selected} @ {price:,g}원")
             tg_notify(
                 f"🔵 매수 체결: {selected}\n"
-                f"매수가: {price:,.2f}원\n"
+                f"매수가: {price:,g}원\n"
                 f"투입금: {buy_amount:,.0f}원"
             )
         else:
