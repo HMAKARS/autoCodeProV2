@@ -17,6 +17,7 @@ from .models import TradeRecord, FailedMarket, AskRecord
 from .market_analyzer import get_market_state
 from .coin_selector import select_coin
 from .indicators import calculate_rsi, calculate_macd
+from .telegram_bot import send_message as tg_notify
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class AutoTrader:
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
         self._log(f"자동매매 시작 (예산: {budget:,.0f}원)")
+        tg_notify(f"🟢 자동매매 시작\n예산: {budget:,.0f}원")
 
     def stop(self):
         """자동매매 중지."""
@@ -68,6 +70,7 @@ class AutoTrader:
             self._thread.join(timeout=5)
             self._thread = None
         self._log("자동매매 중지")
+        tg_notify("🔴 자동매매 중지")
 
     def _log(self, msg: str):
         """거래 로그 기록."""
@@ -102,6 +105,7 @@ class AutoTrader:
                 logger.error("매매 루프 에러", exc_info=True)
                 if self._retry_count >= self._max_retries:
                     self._log("최대 재시도 횟수 초과 - 자동매매 중단")
+                    tg_notify(f"⚠️ 자동매매 중단\n에러 {self._max_retries}회 연속 발생: {e}")
                     self._running = False
                     return
             time.sleep(1)
@@ -212,6 +216,14 @@ class AutoTrader:
             del self._active_trades[market]
             self._log(
                 f"매도 체결: {market} | 수익률={real_pnl:.2f}% | {sell_reason}"
+            )
+            emoji = "💰" if real_pnl >= 0 else "📉"
+            tg_notify(
+                f"{emoji} 매도 체결: {market}\n"
+                f"매수가: {buy_price:,.0f}원\n"
+                f"매도가: {current_price:,.0f}원\n"
+                f"수익률: {real_pnl:+.2f}%\n"
+                f"사유: {sell_reason}"
             )
         else:
             self._log(f"매도 실패: {market}")
@@ -326,6 +338,11 @@ class AutoTrader:
                 "buy_krw_price": buy_amount,
             }
             self._log(f"매수 체결: {selected} @ {price:,.0f}원")
+            tg_notify(
+                f"🔵 매수 체결: {selected}\n"
+                f"매수가: {price:,.0f}원\n"
+                f"투입금: {buy_amount:,.0f}원"
+            )
         else:
             # 실패 기록
             FailedMarket.objects.get_or_create(market=selected)

@@ -71,3 +71,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # 업비트 API
 UPBIT_API_KEY = env("UPBIT_API_KEY", default="")
 UPBIT_SECRET_KEY = env("UPBIT_SECRET_KEY", default="")
+
+# 텔레그램 알림
+TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
+TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")
