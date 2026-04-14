@@ -63,7 +63,9 @@ def select_coin(tickers: list[dict], active_markets: set[str]) -> str | None:
         AskRecord.objects.filter(recorded_at__gte=cooldown)
         .values_list("market", flat=True)
     )
-    excluded = failed | recent_sold | active_markets
+    # USDT 등 스테이블코인 제외
+    stablecoins = {"KRW-USDT", "KRW-USDC", "KRW-DAI", "KRW-TUSD"}
+    excluded = failed | recent_sold | active_markets | stablecoins
 
     # 1차: 최소 거래대금 + 상승 종목 상위 10개
     rising = [

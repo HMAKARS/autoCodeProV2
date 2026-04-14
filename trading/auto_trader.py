@@ -271,22 +271,22 @@ class AutoTrader:
         indicators: dict | None = None,
     ) -> str | None:
         """매도 조건 확인. 반환: 매도 사유 문자열 또는 None."""
-        # 손절: 고변동성 -4%, 일반 -2%
+        # 손절: 고변동성 -4%, 일반 -1.5%
         if change_rate >= 5:
             if current <= buy * 0.96:
                 return f"고변동성 손절 ({pnl_pct:.1f}%)"
         else:
-            if current <= buy * 0.98:
+            if current <= buy * 0.985:
                 return f"일반 손절 ({pnl_pct:.1f}%)"
 
-        # 트레일링 스탑: 2% 이상 수익 후 최고가 대비 1% 하락
-        if current >= buy * 1.02 and highest > 0:
+        # 트레일링 스탑: 1.5% 이상 수익 후 최고가 대비 1% 하락
+        if current >= buy * 1.015 and highest > 0:
             if current <= highest * 0.99:
                 return f"트레일링스탑 (최고가={highest:,g} 현재={current:,g})"
 
-        # 수익 실현: 1% 이상 + 보합/하락장
-        if current >= buy * 1.01 and market_state in ("neutral", "bearish"):
-            return f"수익실현 1% ({market_state})"
+        # 수익 실현: 1.5% 이상 + 보합/하락장
+        if current >= buy * 1.015 and market_state in ("neutral", "bearish"):
+            return f"수익실현 1.5% ({market_state})"
 
         # ── 기술적 지표 기반 매도 (수익 0.8% 이상일 때만) ──
         if indicators and pnl_pct > 0.8:
@@ -305,10 +305,10 @@ class AutoTrader:
 
         # 시간 기반 매도
         if market_state == "bullish" and elapsed >= 360:
-            if current >= buy * 1.01:
+            if current >= buy * 1.015:
                 return f"시간매도 5분 (상승장, {pnl_pct:.1f}%)"
         elif elapsed >= 600:
-            if current >= buy * 1.01:
+            if current >= buy * 1.015:
                 return f"시간매도 10분 ({market_state}, {pnl_pct:.1f}%)"
 
         return None
