@@ -279,8 +279,8 @@ class AutoTrader:
             if current <= buy * 0.985:
                 return f"일반 손절 ({pnl_pct:.1f}%)"
 
-        # 트레일링 스탑: 1.5% 이상 수익 후 최고가 대비 1% 하락
-        if current >= buy * 1.015 and highest > 0:
+        # 트레일링 스탑: 2% 이상 수익 후 최고가 대비 1% 하락
+        if current >= buy * 1.02 and highest > 0:
             if current <= highest * 0.99:
                 return f"트레일링스탑 (최고가={highest:,g} 현재={current:,g})"
 
@@ -305,10 +305,10 @@ class AutoTrader:
 
         # 시간 기반 매도
         if market_state == "bullish" and elapsed >= 360:
-            if current >= buy * 1.015:
+            if current >= buy * 1.01:
                 return f"시간매도 5분 (상승장, {pnl_pct:.1f}%)"
         elif elapsed >= 600:
-            if current >= buy * 1.015:
+            if current >= buy * 1.01:
                 return f"시간매도 10분 ({market_state}, {pnl_pct:.1f}%)"
 
         return None
