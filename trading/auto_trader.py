@@ -18,6 +18,7 @@ from .market_analyzer import get_market_state
 from .coin_selector import select_coin
 from .indicators import (
     calculate_rsi, calculate_macd, calculate_bollinger_bands, calculate_stochastic,
+    calculate_atr,
 )
 from .telegram_bot import send_message as tg_notify
 
@@ -27,6 +28,12 @@ logger = logging.getLogger(__name__)
 FEE_RATE = 0.0005
 MAX_ACTIVE_TRADES = 3
 MIN_KRW_BALANCE = 10_000
+
+# ATR 기반 손절 파라미터
+ATR_MULTIPLIER = 2.0        # ATR의 몇 배를 손절 거리로 쓸지
+MIN_STOP_LOSS_PCT = 1.5     # 손절 최소 폭 (너무 타이트한 손절 방지)
+MAX_STOP_LOSS_PCT = 5.0     # 손절 최대 폭 (과도한 손실 방지)
+DEFAULT_STOP_LOSS_PCT = 2.0 # ATR 계산 실패 시 기본값
 
 
 class AutoTrader:
@@ -85,9 +92,15 @@ class AutoTrader:
         """DB에서 활성 거래 복원."""
         active = TradeRecord.objects.filter(is_active=True)
         for rec in active:
+            # 기존 DB에 손절가 없으면(구 레코드) 매수가 기준 -2%로 설정
+            stop_loss = rec.stop_loss_price
+            if stop_loss <= 0 and rec.buy_price > 0:
+                stop_loss = rec.buy_price * (1 - DEFAULT_STOP_LOSS_PCT / 100)
+
             self._active_trades[rec.market] = {
                 "buy_price": rec.buy_price,
                 "highest_price": rec.highest_price,
+                "stop_loss_price": stop_loss,
                 "uuid": rec.uuid,
                 "created_at": rec.created_at,
                 "buy_krw_price": rec.buy_krw_price,
@@ -188,10 +201,12 @@ class AutoTrader:
 
         # 기술적 지표 조회
         indicators = self._get_indicators(market)
+        stop_loss_price = trade.get("stop_loss_price", 0)
 
         sell_reason = self._check_sell_conditions(
             current_price, buy_price, highest, pnl_pct,
             market_state, elapsed, change_rate, indicators,
+            stop_loss_price,
         )
 
         if not sell_reason:
@@ -269,15 +284,12 @@ class AutoTrader:
         elapsed: float,
         change_rate: float,
         indicators: dict | None = None,
+        stop_loss_price: float = 0,
     ) -> str | None:
         """매도 조건 확인. 반환: 매도 사유 문자열 또는 None."""
-        # 손절: 고변동성 -4%, 일반 -1.5%
-        if change_rate >= 5:
-            if current <= buy * 0.96:
-                return f"고변동성 손절 ({pnl_pct:.1f}%)"
-        else:
-            if current <= buy * 0.985:
-                return f"일반 손절 ({pnl_pct:.1f}%)"
+        # 손절: 매수 시점 고정된 ATR 기반 손절선
+        if stop_loss_price > 0 and current <= stop_loss_price:
+            return f"손절 ({pnl_pct:.2f}% / 손절선={stop_loss_price:,g})"
 
         # 트레일링 스탑: 2% 이상 수익 후 최고가 대비 1% 하락
         if current >= buy * 1.02 and highest > 0:
@@ -368,12 +380,16 @@ class AutoTrader:
             t = upbit_client.get_ticker([selected])
             price = float(t[0]["trade_price"]) if t else buy_amount
 
+            # ATR 기반 손절가 계산 (매수 시점 고정)
+            stop_loss_price, stop_pct = self._calc_stop_loss_price(selected, price)
+
             # DB + 메모리 저장
             rec, _ = TradeRecord.objects.update_or_create(
                 market=selected,
                 defaults={
                     "buy_price": price,
                     "highest_price": price,
+                    "stop_loss_price": stop_loss_price,
                     "uuid": order_uuid,
                     "is_active": True,
                     "buy_krw_price": buy_amount,
@@ -382,20 +398,69 @@ class AutoTrader:
             self._active_trades[selected] = {
                 "buy_price": price,
                 "highest_price": price,
+                "stop_loss_price": stop_loss_price,
                 "uuid": order_uuid,
                 "created_at": rec.created_at,
                 "buy_krw_price": buy_amount,
             }
-            self._log(f"매수 체결: {selected} @ {price:,g}원")
+            self._log(
+                f"매수 체결: {selected} @ {price:,g}원 "
+                f"(손절선={stop_loss_price:,g} / -{stop_pct:.2f}%)"
+            )
             tg_notify(
                 f"🔵 매수 체결: {selected}\n"
                 f"매수가: {price:,g}원\n"
+                f"손절선: {stop_loss_price:,g}원 (-{stop_pct:.2f}%)\n"
                 f"투입금: {buy_amount:,.0f}원"
             )
         else:
             # 실패 기록
             FailedMarket.objects.get_or_create(market=selected)
             self._log(f"매수 실패: {selected} (FailedMarket 등록)")
+
+    def _calc_stop_loss_price(self, market: str, buy_price: float) -> tuple[float, float]:
+        """ATR 기반 손절가 계산.
+
+        Returns:
+            (손절가, 손절폭 %)
+        """
+        candles = upbit_client.get_candles_minutes(market, unit=3, count=30)
+        if not candles or len(candles) < 15:
+            # 데이터 부족 시 기본값
+            stop_price = buy_price * (1 - DEFAULT_STOP_LOSS_PCT / 100)
+            return stop_price, DEFAULT_STOP_LOSS_PCT
+
+        df = pd.DataFrame(candles[::-1])
+        df = df.rename(columns={
+            "opening_price": "open",
+            "high_price": "high",
+            "low_price": "low",
+            "trade_price": "close",
+            "candle_acc_trade_volume": "volume",
+        })
+
+        try:
+            atr = calculate_atr(df, period=14)
+            if atr <= 0 or pd.isna(atr):
+                raise ValueError("ATR 계산 오류")
+
+            # ATR × MULTIPLIER 를 손절 거리로 사용
+            stop_distance = atr * ATR_MULTIPLIER
+            stop_pct = (stop_distance / buy_price) * 100
+
+            # 최소/최대 제한
+            stop_pct = max(MIN_STOP_LOSS_PCT, min(MAX_STOP_LOSS_PCT, stop_pct))
+            stop_price = buy_price * (1 - stop_pct / 100)
+
+            logger.info(
+                "%s ATR 손절가 계산: ATR=%.4f → 손절폭=%.2f%% → 손절선=%.4f",
+                market, atr, stop_pct, stop_price,
+            )
+            return stop_price, stop_pct
+        except Exception as e:
+            logger.warning("%s ATR 계산 실패: %s, 기본값 사용", market, e)
+            stop_price = buy_price * (1 - DEFAULT_STOP_LOSS_PCT / 100)
+            return stop_price, DEFAULT_STOP_LOSS_PCT
 
 
 # 싱글턴 인스턴스

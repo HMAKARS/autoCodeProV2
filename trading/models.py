@@ -6,6 +6,7 @@ class TradeRecord(models.Model):
     market = models.CharField(max_length=20, unique=True)
     buy_price = models.FloatField()
     highest_price = models.FloatField(default=0)
+    stop_loss_price = models.FloatField(default=0)
     uuid = models.CharField(max_length=100, unique=True, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
