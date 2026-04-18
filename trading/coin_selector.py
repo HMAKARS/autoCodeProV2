@@ -14,7 +14,9 @@ import pandas as pd
 from django.utils import timezone
 
 from . import upbit_client
-from .indicators import calculate_rsi, calculate_macd, calculate_bollinger_bands
+from .indicators import (
+    calculate_rsi, calculate_macd, calculate_bollinger_bands, calculate_vwap,
+)
 from .models import FailedMarket, AskRecord
 
 logger = logging.getLogger(__name__)
@@ -171,7 +173,16 @@ def _score_indicators(market: str) -> tuple[float, bool]:
         rsi = calculate_rsi(df)
         macd = calculate_macd(df)
         bb = calculate_bollinger_bands(df)
+        vwap = calculate_vwap(df)
         current_price = float(df["close"].iloc[-1])
+
+        # VWAP 필터: 현재가가 VWAP 아래면 역추세 → 매수 차단
+        if current_price <= vwap:
+            logger.info(
+                "%s VWAP 필터 차단: 현재가=%.4f <= VWAP=%.4f",
+                market, current_price, vwap,
+            )
+            return 0.0, True
 
         score = 0.0
 

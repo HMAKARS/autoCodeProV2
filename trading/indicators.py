@@ -68,6 +68,24 @@ def calculate_bollinger_bands(df: pd.DataFrame, period: int = 20) -> dict:
     }
 
 
+def calculate_vwap(df: pd.DataFrame) -> float:
+    """VWAP (거래량 가중 평균 가격) 계산.
+
+    단타에서 가격/추세 판단의 기준선으로 쓰인다.
+    현재가 > VWAP → 상승 추세, 현재가 < VWAP → 하락 추세.
+    """
+    high = df["high"]
+    low = df["low"]
+    close = df["close"]
+    volume = df["volume"]
+
+    typical_price = (high + low + close) / 3
+    cum_tp_vol = (typical_price * volume).cumsum()
+    cum_vol = volume.cumsum().replace(0, float("nan"))
+    vwap = cum_tp_vol / cum_vol
+    return float(vwap.iloc[-1])
+
+
 def calculate_atr(df: pd.DataFrame, period: int = 14) -> float:
     """ATR (평균진폭) 계산."""
     high = df["high"]
