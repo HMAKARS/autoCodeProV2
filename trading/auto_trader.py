@@ -305,7 +305,7 @@ class AutoTrader:
 
         # 시간 기반 매도
         if market_state == "bullish" and elapsed >= 360:
-            if current >= buy * 1.01:
+            if current >= buy * 1.02:
                 return f"시간매도 5분 (상승장, {pnl_pct:.1f}%)"
         elif elapsed >= 600:
             if current >= buy * 1.01:
